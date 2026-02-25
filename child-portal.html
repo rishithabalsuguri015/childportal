@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4a90e2">
+    <link rel="manifest" href="manifest.json">
+    <title>Child Safety Shield</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        :root {
+            --safe-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --primary-color: #3498db;
+        }
+
+        body {
+            background-color: #f0f4f8;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .portal-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .status-indicator {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-color: var(--safe-color);
+            margin: 0 auto 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            box-shadow: 0 0 20px rgba(46, 204, 113, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4);
+            }
+
+            70% {
+                transform: scale(1.05);
+                box-shadow: 0 0 0 15px rgba(46, 204, 113, 0);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+            }
+        }
+
+        .sos-button {
+            background-color: var(--danger-color);
+            color: white;
+            border: none;
+            padding: 1.5rem 2rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 50px;
+            width: 100%;
+            margin-top: 2rem;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+            transition: transform 0.2s;
+        }
+
+        .sos-button:active {
+            transform: scale(0.95);
+        }
+
+        .tracking-status {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+
+        .child-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        #setupScreen {
+            display: block;
+        }
+
+        #activeScreen {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="portal-container" id="setupScreen">
+        <h2>🛡️ Child Shield</h2>
+        <p>Please enter your Child ID to start tracking.</p>
+        <div class="form-group">
+            <input type="text" id="setupChildId" placeholder="Enter Child ID" class="form-control">
+        </div>
+        <button id="startBtn" class="btn btn-primary" style="margin-top: 1rem;">Start Protection</button>
+        <p style="font-size: 0.8rem; margin-top: 1rem; color: #95a5a6;">Your parent can find this ID in their dashboard.
+        </p>
+    </div>
+
+    <div class="portal-container" id="activeScreen">
+        <div class="status-indicator">🛡️</div>
+        <div class="child-name" id="dispChildName">My Tracking</div>
+        <div id="safeStatus" style="color: var(--safe-color); font-weight: bold;">Safe & Protected</div>
+
+        <button id="sosBtn" class="sos-button">🚨 EMERGENCY SOS</button>
+
+        <p class="tracking-status">Last location sync: <span id="lastSyncTime">Just now</span></p>
+        <p style="font-size: 0.8rem; color: #95a5a6; margin-top: 1rem;">Keep this screen open for continuous tracking.
+        </p>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        let childId = null;
+        let updateInterval = null;
+
+        // Check if Child ID is in URL or localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlId = urlParams.get('childId');
+        const storedId = localStorage.getItem('activeChildId');
+
+        if (urlId || storedId) {
+            childId = urlId || storedId;
+            startProtection();
+        }
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            childId = document.getElementById('setupChildId').value.trim();
+            if (childId) {
+                localStorage.setItem('activeChildId', childId);
+                startProtection();
+            } else {
+                alert('Please enter a valid Child ID');
+            }
+        });
+
+        async function startProtection() {
+            document.getElementById('setupScreen').style.display = 'none';
+            document.getElementById('activeScreen').style.display = 'block';
+
+            // Try to fetch child info
+            try {
+                const data = await apiRequest(`/api/child/${childId}`);
+                if (data.success) {
+                    document.getElementById('dispChildName').textContent = data.data.name;
+                }
+            } catch (e) {
+                console.log("Could not fetch child name");
+            }
+
+            // Start tracking
+            updateLocation();
+            updateInterval = setInterval(updateLocation, 30000); // Every 30 seconds
+        }
+
+        async function updateLocation() {
+            if (!navigator.geolocation) return;
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                try {
+                    const data = await apiRequest('/api/location', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            childId: childId,
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        })
+                    });
+
+                    if (data.success) {
+                        document.getElementById('lastSyncTime').textContent = new Date().toLocaleTimeString();
+                        const statusText = document.getElementById('safeStatus');
+                        if (data.geofenceAlert) {
+                            statusText.textContent = "Outside Safe Zone!";
+                            statusText.style.color = "var(--danger-color)";
+                        } else {
+                            statusText.textContent = "Safe & Protected";
+                            statusText.style.color = "var(--safe-color)";
+                        }
+                    }
+                } catch (error) {
+                    console.error("Tracking update failed", error);
+                }
+            }, (error) => {
+                console.error("GPS error", error);
+            }, {
+                enableHighAccuracy: true
+            });
+        }
+
+        document.getElementById('sosBtn').addEventListener('click', async () => {
+            if (!navigator.geolocation) return;
+
+            const btn = document.getElementById('sosBtn');
+            btn.textContent = "WAITING...";
+            btn.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                try {
+                    const data = await apiRequest('/api/sos', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            childId: childId,
+                            message: "EMERGENCY SOS! I need help!",
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        })
+                    });
+
+                    if (data.success) {
+                        alert("SOS Alert Sent to Parent!");
+                        btn.textContent = "🚨 SOS SENT";
+                        setTimeout(() => {
+                            btn.textContent = "🚨 EMERGENCY SOS";
+                            btn.disabled = false;
+                        }, 5000);
+                    }
+                } catch (error) {
+                    alert("Failed to send SOS. Check connection.");
+                    btn.disabled = false;
+                    btn.textContent = "🚨 EMERGENCY SOS";
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
